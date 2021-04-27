@@ -8,12 +8,18 @@ public class World : MonoBehaviour
     public FloatData gravity;
     public FloatData fixedFPS;
     public StringData fpsText;
+    public FloatData gravitation;
+    public BoolData collision;
+    public BoolData wrap;
+
+    Vector2 size;
 
     static World instance;
     static public World Instance { get { return instance; } }
 
     public Vector2 Gravity { get { return new Vector2(0, gravity.value); } }
     public List<Body> bodies { get; set; } = new List<Body>();
+    public List<Spring> springs { get; set; } = new List<Spring>();
 
     float timeAccumulator = 0;
     float fixedDeltaTime { get { return 1.0f / fixedFPS.value; } }
@@ -24,6 +30,7 @@ public class World : MonoBehaviour
     private void Awake()
     {
         instance = this;
+        size = Camera.main.ViewportToWorldPoint(Vector2.one);
     }
 
     void Update()
@@ -35,11 +42,8 @@ public class World : MonoBehaviour
 
         if (!simulate.value) return;
 
-        bodies.ForEach(body => body.Step(dt));
-        bodies.ForEach(body => Integrator.SemiImplicitEuler(body, dt));
-
-        bodies.ForEach(body => body.force = Vector2.zero);
-        bodies.ForEach(body => body.acceleration = Vector2.zero);
+        GravitationalForce.ApplyForce(bodies, gravitation.value);
+        springs.ForEach(spring => spring.ApplyForce());
 
         timeAccumulator += dt;
         while(timeAccumulator > fixedDeltaTime)
@@ -47,7 +51,27 @@ public class World : MonoBehaviour
             bodies.ForEach(body => body.Step(fixedDeltaTime));
             bodies.ForEach(body => Integrator.ExplicitEuler(body, fixedDeltaTime));
 
+            bodies.ForEach(body => body.shape.color = Color.white);
+
+            if(collision == true)
+            {
+                Collision.CreateContacts(bodies, out List<Contact> contacts);
+                contacts.ForEach(contact => { contact.bodyA.shape.color = Color.red; contact.bodyB.shape.color = Color.red; });
+                ContactSolver.Resolve(contacts);
+            }
+
             timeAccumulator = timeAccumulator - fixedDeltaTime;
         }
+
+        if (wrap) 
+        {
+            bodies.ForEach(body => body.position = Utilities.Wrap(body.position, -size, size)); 
+        }
+
+        bodies.ForEach(body => body.Step(dt));
+        bodies.ForEach(body => Integrator.SemiImplicitEuler(body, dt));
+
+        bodies.ForEach(body => body.force = Vector2.zero);
+        bodies.ForEach(body => body.acceleration = Vector2.zero);
     }
 }
